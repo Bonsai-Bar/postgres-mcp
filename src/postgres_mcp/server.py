@@ -666,6 +666,26 @@ async def main():
     elif args.transport == "streamable-http":
         mcp.settings.host = args.streamable_http_host
         mcp.settings.port = args.streamable_http_port
+        # FastMCP auto-enables DNS-rebinding protection with a localhost-only
+        # Host allowlist at construction time (its default host is 127.0.0.1).
+        # Because we set the bind host afterwards, that localhost-only allowlist
+        # is never recomputed, so every non-localhost Host header is rejected
+        # with HTTP 421. Behind Cloudflare Access + a read-only DB role the
+        # rebinding threat model does not apply, so default to disabling the
+        # check; set MCP_ALLOWED_HOSTS (comma-separated Host values, ":*" ok)
+        # to re-enable it with an explicit allowlist.
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        allowed = [h.strip() for h in os.environ.get("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+        if allowed:
+            mcp.settings.transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=allowed,
+            )
+        else:
+            mcp.settings.transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=False,
+            )
         await mcp.run_streamable_http_async()
 
 
